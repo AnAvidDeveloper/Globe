@@ -1,0 +1,25 @@
+﻿<Window x:Class="Globe.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Globe" Height="500" Width="500" Loaded="Window_Loaded" KeyDown="Window_KeyDown">
+    <Grid>
+        <Grid.Background>
+            <ImageBrush ImageSource="hubble_friday_08052016.jpg" Stretch="UniformToFill"/>
+        </Grid.Background>
+        <Menu Height="23" VerticalAlignment="Top">
+            <MenuItem Header="_File">
+                <MenuItem Header="_Open..." Click="OpenImage_Click" />
+                <MenuItem Header="_Export..." Click="Export_Click" />                
+                <Separator />
+                <MenuItem Header="_Print..." Click="Print_Click" />
+                <Separator />
+                <MenuItem Header="E_xit" Click="Exit_Click" />
+            </MenuItem>
+            <MenuItem Header="_View">
+                <MenuItem Name="mnuViewSpin" Header="_Spin" Click="ViewSpin_Click" />
+                <!-- <MenuItem Name="mnuViewSun" Header="S_un" Click="ViewSun_Click" /> -->
+            </MenuItem>
+        </Menu>
+        <Viewport3D Grid.Row="0" Grid.Column="0" Name="MainViewport" Margin="0,23,0,0" />
+    </Grid>
+</Window>
