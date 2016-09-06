@@ -231,6 +231,46 @@ namespace Globe
             mesh.TriangleIndices.Add(index3);
         }
 
+        // Add a triangle to the indicated mesh.
+        // Add texture coordinates.
+        private void AddTexturedTriangle(MeshGeometry3D mesh, Dictionary<Point3D, int> dict,
+            Point3D point1, Point3D point2, Point3D point3, Point uv1, Point uv2, Point uv3)
+        {
+            int index1, index2, index3;
+
+            // Create the points.
+            index1 = mesh.Positions.Count;
+            mesh.Positions.Add(point1);
+            mesh.TextureCoordinates.Add(uv1);
+            if (!dict.ContainsKey(point1))
+                dict.Add(point1, index1);
+
+            index2 = mesh.Positions.Count;
+            mesh.Positions.Add(point2);
+            mesh.TextureCoordinates.Add(uv2);
+            if (!dict.ContainsKey(point2))
+                dict.Add(point2, index2);
+
+            index3 = mesh.Positions.Count;
+            mesh.Positions.Add(point3);
+            mesh.TextureCoordinates.Add(uv3);
+            if (!dict.ContainsKey(point3))
+                dict.Add(point3, index3);
+
+            // If two or more of the points are
+            // the same, it's not a triangle.
+            if ((point1 == point2) ||
+                (point2 == point3) ||
+                (point3 == point1))
+                return;
+
+            // Create the triangle.
+            mesh.TriangleIndices.Add(index1);
+            mesh.TriangleIndices.Add(index2);
+            mesh.TriangleIndices.Add(index3);
+        }
+
+
         /// <summary>
         /// Returns the UV (texture coordinates) for a point on a sphere.
         /// </summary>
@@ -246,7 +286,7 @@ namespace Globe
             if (lon < 0)
                 lon += twoPI;
             double v = lat / Math.PI;
-            double u = twoPI - (lon / twoPI);
+            double u = (twoPI - (lon / twoPI)) / twoPI;
             return new Point(u, v);
         }
 
@@ -292,7 +332,7 @@ namespace Globe
 
                 // Calculate UV for the two points we just found.
                 Point uv00 = GetSphereUV(center, radius, pt00);
-                Point uv10 = GetSphereUV(center, radius, pt00);
+                Point uv10 = GetSphereUV(center, radius, pt10);
 
                 for (int j = 0; j < numTheta; j++)
                 {
@@ -383,6 +423,7 @@ namespace Globe
         {
             var imgBrush = new ImageBrush(image);            
             imgBrush.ViewportUnits = BrushMappingMode.RelativeToBoundingBox;
+            imgBrush.TileMode = TileMode.Tile;  // Helps prevent seams, even if we really don't intend to tile
 
             if (GlobeModel == null)
                 return;
@@ -469,6 +510,12 @@ namespace Globe
         {
             mnuViewSpin.IsChecked = !mnuViewSpin.IsChecked;
             SpinEnabled = mnuViewSpin.IsChecked;
+        }
+
+        private void HelpAbout_Click(object sender, RoutedEventArgs e)
+        {
+            HelpWindow help = new HelpWindow();
+            help.Show();
         }
 
         //private void ViewSun_Click(object sender, RoutedEventArgs e)
