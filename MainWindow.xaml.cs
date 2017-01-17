@@ -179,44 +179,50 @@ namespace Globe
             return globeModel;
         }
 
+
+        /// <summary>
+        /// Adds a vertex to the mesh and dictionary if not already present.
+        /// Returns the index of the vertex.
+        /// </summary>
+        /// <param name="mesh"></param>
+        /// <param name="dict"></param>
+        /// <param name="point"></param>
+        /// <param name="uv"></param>
+        /// <param name="normal"></param>
+        /// <returns></returns>
+        private int AddVertex(MeshGeometry3D mesh, Dictionary<Point3D, int> dict,
+            Point3D point, Point uv, Vector3D? normal)
+        {
+            int index = -1;
+
+            // Find or create the points.
+            if (dict.ContainsKey(point))
+                index = dict[point];
+            else
+            {
+                index = mesh.Positions.Count;
+                mesh.Positions.Add(point);
+                mesh.TextureCoordinates.Add(uv);
+                if (normal.HasValue) mesh.Normals.Add(normal.Value);
+                dict.Add(point, index);
+            }
+
+            return index;
+        }
+
+
         // Add a triangle to the indicated mesh.
         // Reuse points so triangles share normals.
         // Add texture coordinates only for points being added, not those being reused.
-        private void AddSmoothTexturedTriangle(MeshGeometry3D mesh, Dictionary<Point3D, int> dict, 
-            Point3D point1, Point3D point2, Point3D point3, Point uv1, Point uv2, Point uv3)
+        private void AddSmoothTexturedTriangle(MeshGeometry3D mesh, Dictionary<Point3D, int> dict,
+            Point3D point1, Point3D point2, Point3D point3,
+            Point uv1, Point uv2, Point uv3,
+            Vector3D? normal1 = null, Vector3D? normal2 = null, Vector3D? normal3 = null)
         {
-            int index1, index2, index3;
-
             // Find or create the points.
-            if (dict.ContainsKey(point1))
-                index1 = dict[point1];
-            else
-            {
-                index1 = mesh.Positions.Count;
-                mesh.Positions.Add(point1);
-                mesh.TextureCoordinates.Add(uv1);
-                dict.Add(point1, index1);
-            }
-
-            if (dict.ContainsKey(point2))
-                index2 = dict[point2];
-            else
-            {
-                index2 = mesh.Positions.Count;
-                mesh.Positions.Add(point2);
-                mesh.TextureCoordinates.Add(uv2);
-                dict.Add(point2, index2);
-            }
-
-            if (dict.ContainsKey(point3))
-                index3 = dict[point3];
-            else
-            {
-                index3 = mesh.Positions.Count;
-                mesh.Positions.Add(point3);
-                mesh.TextureCoordinates.Add(uv3);
-                dict.Add(point3, index3);
-            }
+            int index1 = AddVertex(mesh, dict, point1, uv1, normal1);
+            int index2 = AddVertex(mesh, dict, point2, uv2, normal2);
+            int index3 = AddVertex(mesh, dict, point3, uv3, normal3);
 
             // If two or more of the points are
             // the same, it's not a triangle.
@@ -231,62 +237,19 @@ namespace Globe
             mesh.TriangleIndices.Add(index3);
         }
 
-        // Add a triangle to the indicated mesh.
-        // Add texture coordinates.
-        private void AddTexturedTriangle(MeshGeometry3D mesh, Dictionary<Point3D, int> dict,
-            Point3D point1, Point3D point2, Point3D point3, Point uv1, Point uv2, Point uv3)
-        {
-            int index1, index2, index3;
-
-            // Create the points.
-            index1 = mesh.Positions.Count;
-            mesh.Positions.Add(point1);
-            mesh.TextureCoordinates.Add(uv1);
-            if (!dict.ContainsKey(point1))
-                dict.Add(point1, index1);
-
-            index2 = mesh.Positions.Count;
-            mesh.Positions.Add(point2);
-            mesh.TextureCoordinates.Add(uv2);
-            if (!dict.ContainsKey(point2))
-                dict.Add(point2, index2);
-
-            index3 = mesh.Positions.Count;
-            mesh.Positions.Add(point3);
-            mesh.TextureCoordinates.Add(uv3);
-            if (!dict.ContainsKey(point3))
-                dict.Add(point3, index3);
-
-            // If two or more of the points are
-            // the same, it's not a triangle.
-            if ((point1 == point2) ||
-                (point2 == point3) ||
-                (point3 == point1))
-                return;
-
-            // Create the triangle.
-            mesh.TriangleIndices.Add(index1);
-            mesh.TriangleIndices.Add(index2);
-            mesh.TriangleIndices.Add(index3);
-        }
-
-
         /// <summary>
-        /// Returns the UV (texture coordinates) for a point on a sphere.
+        /// Calculates the UV coordinates for a given theta (longitude)
+        /// and phi (latitude) value as supplied in radians.
         /// </summary>
-        /// <param name="center">center of the sphere</param>
-        /// <param name="radius">radius of the sphere</param>
-        /// <param name="point">point on the sphere who's UV we seek</param>
+        /// <param name="theta"></param>
+        /// <param name="phi"></param>
         /// <returns></returns>
-        private Point GetSphereUV(Point3D center, double radius, Point3D point)
+        private Point GetSphereUV(double theta, double phi)
         {
-            Point3D effectivePoint = (Point3D)(point - center);
-            double lat = Math.Acos(effectivePoint.Y / radius); //theta
-            double lon = Math.Atan2(effectivePoint.Z, effectivePoint.X); //phi
-            if (lon < 0)
-                lon += twoPI;
+            double lat = phi;
+            double lon = theta;
             double v = lat / Math.PI;
-            double u = (twoPI - (lon / twoPI)) / twoPI;
+            double u = twoPI - lon;
             return new Point(u, v);
         }
 
@@ -308,11 +271,27 @@ namespace Globe
             double dphi = Math.PI / numPhi;
             double dtheta = 2 * Math.PI / numTheta;
 
-            phi0 = 0;
+            phi0 = 0; 
+            //phi0 = dphi;    // for testing the swirl problem at top
             double y0 = radius * Math.Cos(phi0);
             double r0 = radius * Math.Sin(phi0);
+
+            // At top of sphere, must apply a "fudge factor" to y component so apex is at 
+            // minutely different heights for each top triangle.  This is because the same
+            // vertex position can only be in a mesh once if smooth normals are to work
+            // properly, but each vertex position in a mesh can only have one texture 
+            // coordinate.  For each of the top triangles we need a different 
+            // texture coordinate at the apex.  The "fudge" applied yields minutely
+            // different coordinates so different texture coordinates can be supplied
+            // without impacting automatic smoothing of the normals.
+            const double fudgeFactor = 0.00001;
+
             for (int i = 0; i < numPhi; i++)
             {
+                // fudge only at apex
+                double fudgeToApply = 0;
+                if (phi0 == 0) fudgeToApply = fudgeFactor; 
+
                 double phi1 = phi0 + dphi;
                 double y1 = radius * Math.Cos(phi1);
                 double r1 = radius * Math.Sin(phi1);
@@ -323,24 +302,35 @@ namespace Globe
                 theta0 = 0;
                 Point3D pt00 = new Point3D(
                     center.X + r0 * Math.Cos(theta0),
-                    center.Y + y0,
+                    center.Y + y0 + fudgeToApply,
                     center.Z + r0 * Math.Sin(theta0));
                 Point3D pt10 = new Point3D(
                     center.X + r1 * Math.Cos(theta0),
                     center.Y + y1,
                     center.Z + r1 * Math.Sin(theta0));
 
-                // Calculate UV for the two points we just found.
-                Point uv00 = GetSphereUV(center, radius, pt00);
-                Point uv10 = GetSphereUV(center, radius, pt10);
+                // Calculate normals.
+                Vector3D n00 = pt00 - center;
+                Vector3D n10 = pt10 - center;
+                n00.Normalize();
+                n10.Normalize();
 
                 for (int j = 0; j < numTheta; j++)
                 {
+                    // each top triangle will need a different apex y
+                    if (phi0 == 0) fudgeToApply = fudgeFactor * j;  
+
+                    // Calculate UV for the two points we just found.
+                    //Point uv00 = GetSphereUV(center, radius, pt00);
+                    //Point uv10 = GetSphereUV(center, radius, pt10);
+                    Point uv00 = GetSphereUV(theta0, phi0);
+                    Point uv10 = GetSphereUV(theta0, phi1);
+
                     // Find the points with theta = theta1.
                     double theta1 = theta0 + dtheta;
                     Point3D pt01 = new Point3D(
                         center.X + r0 * Math.Cos(theta1),
-                        center.Y + y0,
+                        center.Y + y0 + fudgeToApply,
                         center.Z + r0 * Math.Sin(theta1));
                     Point3D pt11 = new Point3D(
                         center.X + r1 * Math.Cos(theta1),
@@ -348,12 +338,25 @@ namespace Globe
                         center.Z + r1 * Math.Sin(theta1));
 
                     // Calculate UV for the two points we just found.
-                    Point uv01 = GetSphereUV(center, radius, pt01);
-                    Point uv11 = GetSphereUV(center, radius, pt11);
+                    Point uv01 = GetSphereUV(theta1, phi0);
+                    Point uv11 = GetSphereUV(theta1, phi1);
+
+                    // Calculate normals.
+                    Vector3D n01 = pt01 - center;
+                    Vector3D n11 = pt11 - center;
+                    n01.Normalize();
+                    n11.Normalize();
 
                     // Create the triangles, with texture coordinates.
-                    AddSmoothTexturedTriangle(mesh, dict, pt00, pt11, pt10, uv00, uv11, uv10);
-                    AddSmoothTexturedTriangle(mesh, dict, pt00, pt01, pt11, uv00, uv01, uv11);
+                    if (phi0 == 0)
+                    {
+                        AddSmoothTexturedTriangle(mesh, dict, pt00, pt11, pt10, uv00, uv11, uv10, n00, n11, n10);
+                    }
+                    else
+                    {
+                        AddSmoothTexturedTriangle(mesh, dict, pt00, pt11, pt10, uv00, uv11, uv10, n00, n11, n10);
+                        AddSmoothTexturedTriangle(mesh, dict, pt00, pt01, pt11, uv00, uv01, uv11, n00, n01, n11);
+                    }
 
                     // Move to the next value of theta.
                     theta0 = theta1;
@@ -421,9 +424,12 @@ namespace Globe
         /// <param name="image"></param>
         private void ApplyImageToGlobe(BitmapImage image)
         {
-            var imgBrush = new ImageBrush(image);            
+            var imgBrush = new ImageBrush(image);
+            //imgBrush.ViewportUnits = BrushMappingMode.RelativeToBoundingBox;
+            //imgBrush.TileMode = TileMode.Tile;  // Helps prevent seams, even if we really don't intend to tile
             imgBrush.ViewportUnits = BrushMappingMode.RelativeToBoundingBox;
-            imgBrush.TileMode = TileMode.Tile;  // Helps prevent seams, even if we really don't intend to tile
+            imgBrush.TileMode = TileMode.None;
+
 
             if (GlobeModel == null)
                 return;
